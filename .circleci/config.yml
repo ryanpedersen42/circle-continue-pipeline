@@ -1,0 +1,41 @@
+version: 2
+
+setup: true
+
+jobs:
+  build:
+    docker:
+      - image: alpine
+    steps:
+      - run:
+          name: Install cURL and jq
+          command: apk add curl jq
+      - run:
+          name: Generate /tmp/another-config.yml
+          command: |
+            cat << EOD | tee /tmp/another-config.yml
+            version: 2
+
+            jobs:
+              build:
+                docker:
+                  - image: alpine
+                steps:
+                  - run: echo "Hello from another workflow!"
+            EOD
+      - run:
+          name: Build a valid JSON message using jq and write it to /tmp/continue-body.json
+          command: |
+            jq -n\
+              --arg continuation "$CIRCLE_CONTINUATION_KEY" \
+              --arg config "$(cat /tmp/another-config.yml)" \
+              '{"continuation-key": $continuation, "configuration": $config}' | tee /tmp/continue-body.json
+      - run:
+          name: Execute another config
+          command: |
+            curl \
+              -f \
+              -X POST \
+              -H "Content-Type: application/json" \
+              --data-binary @/tmp/continue-body.json \
+              https://circleci.com/api/v2/pipeline/continue
